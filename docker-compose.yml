@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092" # Kafka API
+      - "8081:8081"   # Schema Registry
+      - "8080:8080"   # Redpanda Console (UI)
+
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: traffic
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
