@@ -1,0 +1,14 @@
+[package]
+name = "traffic-ingest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+traffic-common = { path = "../common" }
+
+tokio = { workspace = true }
+rdkafka = { workspace = true }
+prost = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+futures = "0.3" # Нужен для работы с потоками сообщений

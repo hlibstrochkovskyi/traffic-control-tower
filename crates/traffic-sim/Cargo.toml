@@ -1,0 +1,19 @@
+[package]
+name = "traffic-sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Подключаем нашу общую библиотеку локально
+traffic-common = { path = "../common" }
+
+# Используем версии из Workspace
+tokio = { workspace = true }
+rdkafka = { workspace = true }
+prost = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# Специфичные для симулятора
+rand = "0.8"
+chrono = "0.4"
