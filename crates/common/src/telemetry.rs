@@ -1,6 +1,6 @@
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-struct EnvFilter();
+
 
 pub fn init_tracing(service_name: &str) {
     tracing_subscriber::registry()

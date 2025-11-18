@@ -3,8 +3,15 @@ members = ["crates/common"]
 resolver = "2"
 
 [workspace.dependencies]
+tokio = { version = "1.35", features = ["full"] }
+rdkafka = { version = "0.36", features = ["cmake-build"] }
 prost = "0.12"
-serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0"
+thiserror = "1.0"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "time"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+envy = "0.4"
+dotenvy = "0.15"
