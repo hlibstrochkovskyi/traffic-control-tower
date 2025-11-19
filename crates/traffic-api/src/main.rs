@@ -11,21 +11,18 @@ use traffic_common::{Config, init_tracing};
 use anyhow::Result;
 use redis::AsyncCommands;
 
-// Application state (available to all handlers)
 #[derive(Clone)]
 struct AppState {
     redis: ConnectionManager,
 }
 
-// Query parameters from the frontend (what the user is viewing)
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)] // Добавил Debug для логирования
 struct ViewportParams {
     lat: f64,
     lon: f64,
     radius_km: f64,
 }
 
-// Data to send to the frontend
 #[derive(Serialize)]
 struct VehicleData {
     id: String,
@@ -39,19 +36,17 @@ async fn main() -> Result<()> {
     init_tracing("traffic-api");
     let config = Config::from_env()?;
 
-    // Connect to Redis
     let client = redis::Client::open(config.redis_url.as_str())?;
     let redis = client.get_tokio_connection_manager().await?;
 
     let state = AppState { redis };
 
-    // Router
     let app = Router::new()
-        .route("/ws", get(ws_handler)) // WebSocket endpoint
-        .route("/health", get(|| async { "OK" })) // Liveness check
+        .route("/ws", get(ws_handler))
+        .route("/health", get(|| async { "OK" }))
         .layer(
             tower_http::cors::CorsLayer::new()
-                .allow_origin(tower_http::cors::Any) // Allow requests from any origin (e.g., localhost:5173 for Vite)
+                .allow_origin(tower_http::cors::Any)
                 .allow_methods(tower_http::cors::Any),
         )
         .with_state(Arc::new(state));
@@ -64,35 +59,39 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// WebSocket connection handler
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<ViewportParams>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::info!("New client connected: view ({}, {}) r={}km", params.lat, params.lon, params.radius_km);
+    tracing::info!("🔌 New client connected: {:?}", params);
     ws.on_upgrade(move |socket| handle_socket(socket, state, params))
 }
 
-// Logic for sending data to the client
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, viewport: ViewportParams) {
-    let mut interval = tokio::time::interval(std::time::Duration::from_millis(100)); // 10 FPS
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
     let mut redis = state.redis.clone();
 
     loop {
         interval.tick().await;
 
-        // Look up vehicles within the radius
         match fetch_vehicles_in_viewport(&mut redis, &viewport).await {
             Ok(vehicles) => {
+                // Логируем только если нашли машины, чтобы не спамить
+                if !vehicles.is_empty() {
+                    tracing::info!("📨 Sending {} vehicles to client", vehicles.len());
+                }
+                // Если 0 машин, логируем раз в 5 секунд (примерно), иначе консоль взорвется
+                // (но для теста пока оставим как есть или можно смотреть на "Found 0" ниже)
+
                 let json = serde_json::to_string(&vehicles).unwrap_or_default();
                 if socket.send(Message::Text(json)).await.is_err() {
-                    tracing::info!("Client disconnected");
+                    tracing::warn!("❌ Client disconnected");
                     break;
                 }
             }
             Err(e) => {
-                tracing::error!("Redis error: {}", e);
+                tracing::error!("❌ Redis error: {}", e);
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         }
@@ -103,30 +102,60 @@ async fn fetch_vehicles_in_viewport(
     redis: &mut ConnectionManager,
     viewport: &ViewportParams,
 ) -> Result<Vec<VehicleData>> {
-    // GEORADIUS returns a list of vehicles within the circle
-    // Use WITHCOORD option to get coordinates immediately
-    let results: Vec<(String, f64, f64)> = redis.geo_radius(
-        "vehicles:current",
+    tracing::debug!(
+        "🔍 GEORADIUS key='vehicles:current' lon={} lat={} rad={}km",
         viewport.lon,
         viewport.lat,
-        viewport.radius_km,
-        redis::geo::Unit::Kilometers,
-        redis::geo::RadiusOptions::default().with_coord(),
-    ).await?;
+        viewport.radius_km
+    );
 
-    let mut vehicles = Vec::with_capacity(results.len());
+    // Используем сырой запрос redis::cmd, чтобы точно контролировать ответ
+    // GEORADIUS возвращает сложную структуру: [ [name, [lon, lat]], ... ]
+    // Библиотека redis-rs иногда путается в типах, поэтому парсим вручную.
 
-    for (vehicle_id, lon, lat) in results {
-        // For speed we use a placeholder 0.0 for now to avoid MGET (optimization for the future)
-        // Or add a GET request if desired
-        let speed = 0.0;
+    let raw_results: Vec<redis::Value> = redis::cmd("GEORADIUS")
+        .arg("vehicles:current")
+        .arg(viewport.lon)
+        .arg(viewport.lat)
+        .arg(viewport.radius_km)
+        .arg("km")
+        .arg("WITHCOORD")
+        .query_async(redis)
+        .await?;
 
-        vehicles.push(VehicleData {
-            id: vehicle_id,
-            lat,
-            lon,
-            speed,
-        });
+    let mut vehicles = Vec::with_capacity(raw_results.len());
+
+    for item in raw_results {
+        // Парсим каждый элемент ответа [name, [lon, lat]]
+        if let redis::Value::Bulk(items) = item {
+            if items.len() >= 2 {
+                // 1. Получаем ID
+                let id_val = &items[0];
+                let id: String = redis::from_redis_value(id_val)?;
+
+                // 2. Получаем Координаты (это вложенный Bulk)
+                let coords_val = &items[1];
+                if let redis::Value::Bulk(coords) = coords_val {
+                    if coords.len() >= 2 {
+                        let lon: f64 = redis::from_redis_value(&coords[0])?;
+                        let lat: f64 = redis::from_redis_value(&coords[1])?;
+
+                        vehicles.push(VehicleData {
+                            id,
+                            lat,
+                            lon,
+                            speed: 15.0, // Заглушка
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if vehicles.is_empty() {
+        tracing::warn!("⚠️ Found 0 vehicles (parsed).");
+    } else {
+        tracing::info!("✅ Successfully parsed {} vehicles", vehicles.len());
     }
 
     Ok(vehicles)
