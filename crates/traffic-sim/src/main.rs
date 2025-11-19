@@ -3,8 +3,8 @@ mod systems;
 mod map;
 
 use bevy_ecs::prelude::*;
-use components::*;
-// use systems::movement::*; // Временно отключаем
+use components::*; // Отсюда теперь берется DeltaTime
+// use systems::movement::*; // Отключено
 use systems::broadcast::*;
 use traffic_common::{Config, init_tracing};
 use map::RoadGraph;
@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
-use crate::systems::movement::DeltaTime;
 
 #[tokio::main]
 async fn    main() -> Result<()> {
