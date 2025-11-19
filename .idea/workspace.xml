@@ -20,11 +20,9 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Add Bevy ECS integration; implement vehicle simulation and batch processing; update dependencies">
-      <change beforePath="$PROJECT_DIR$/.idea/traffic-city.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/traffic-city.iml" afterDir="false" />
+    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -95,7 +93,7 @@
       <workItem from="1763503987999" duration="3000" />
       <workItem from="1763504005400" duration="1999000" />
       <workItem from="1763506706733" duration="656000" />
-      <workItem from="1763507946869" duration="10446000" />
+      <workItem from="1763507946869" duration="11188000" />
     </task>
     <task id="LOCAL-00001" summary="Add configuration, error handling, and telemetry modules; update dependencies">
       <option name="closed" value="true" />
@@ -153,7 +151,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763515919104</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming">
+      <option name="closed" value="true" />
+      <created>1763519045688</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1763519045688</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -167,7 +173,8 @@
     <MESSAGE value="Update workspace configuration; adjust toolchain directory and task durations" />
     <MESSAGE value="Update workspace configuration; adjust toolchain directory, task durations, and add environment variables" />
     <MESSAGE value="Add Bevy ECS integration; implement vehicle simulation and batch processing; update dependencies" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add Bevy ECS integration; implement vehicle simulation and batch processing; update dependencies" />
+    <MESSAGE value="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

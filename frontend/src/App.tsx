@@ -38,6 +38,7 @@ export default function App() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log("Пришли данные:", data);
         setVehicles(data);
       } catch (err) {
         console.error('Parse error:', err);
