@@ -73,7 +73,7 @@ async fn run_simulation(producer: &FutureProducer) -> Result<()> {
             .key(&position.vehicle_id);
 
         match producer.send(record, Duration::from_secs(0)).await {
-            Ok(_) => tracing::debug!("Sent position for {}", position.vehicle_id),
+            Ok(_) => tracing::info!("Sent position for {}", position.vehicle_id),
             Err((e, _)) => tracing::error!("Failed to send message: {}", e),
         }
     }

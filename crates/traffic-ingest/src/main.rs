@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
     // 1. Создаем Consumer
     let consumer: StreamConsumer = ClientConfig::new()
         .set("bootstrap.servers", &config.kafka_brokers)
-        .set("group.id", "ingest-group") // Важно: ID группы потребителей
+        .set("group.id", "ingest-group-2") // Важно: ID группы потребителей
         .set("auto.offset.reset", "earliest") // Читать с начала, если нет истории
         .set("enable.auto.commit", "false")   // Мы будем подтверждать вручную
         .create()
