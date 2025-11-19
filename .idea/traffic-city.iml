@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/crates/common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/traffic-api/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/traffic-ingest/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/traffic-sim/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
