@@ -941,6 +941,9 @@ name = "glam"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hash32"
@@ -2912,6 +2915,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "futures 0.3.31",
  "redis",
  "serde",
  "serde_json",
@@ -2926,8 +2930,12 @@ name = "traffic-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bevy_ecs",
  "dotenvy",
  "envy",
+ "geo",
+ "glam",
+ "osmpbfreader",
  "prost",
  "prost-build",
  "rdkafka",

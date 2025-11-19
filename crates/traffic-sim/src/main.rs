@@ -1,13 +1,12 @@
 mod components;
 mod systems;
-mod map;
 
 use bevy_ecs::prelude::*;
 use components::*; // Отсюда теперь берется DeltaTime
 // use systems::movement::*; // Отключено
 use systems::broadcast::*;
-use traffic_common::{Config, init_tracing};
-use map::RoadGraph;
+use traffic_common::{init_tracing, Config};
+use traffic_common::map::RoadGraph;
 use glam::Vec2;
 use rand::Rng;
 use std::time::{Duration, Instant};

@@ -1,34 +1,24 @@
 use axum::{
-    extract::{ws::{WebSocket, WebSocketUpgrade, Message}, State, Query},
+    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
     routing::get,
     Router,
+    Json,
 };
-use redis::aio::ConnectionManager;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+// Убрали лишние импорты, чтобы не было варнингов
+use futures::{sink::SinkExt, stream::StreamExt};
+use std::{sync::Arc, net::SocketAddr};
+use tokio::sync::broadcast;
+use tokio::net::TcpListener; // <--- НУЖНО ДЛЯ AXUM 0.7
 use traffic_common::{Config, init_tracing};
+use traffic_common::map::{RoadGraph, Road};
 use anyhow::Result;
-use redis::AsyncCommands;
 
-#[derive(Clone)]
+// Состояние приложения
 struct AppState {
-    redis: ConnectionManager,
-}
-
-#[derive(Deserialize, Debug)] // Добавил Debug для логирования
-struct ViewportParams {
-    lat: f64,
-    lon: f64,
-    radius_km: f64,
-}
-
-#[derive(Serialize)]
-struct VehicleData {
-    id: String,
-    lat: f64,
-    lon: f64,
-    speed: f64,
+    redis_client: redis::Client,
+    tx: broadcast::Sender<String>,
+    map: Arc<RoadGraph>,
 }
 
 #[tokio::main]
@@ -36,127 +26,88 @@ async fn main() -> Result<()> {
     init_tracing("traffic-api");
     let config = Config::from_env()?;
 
+    // 1. Подключение к Redis
     let client = redis::Client::open(config.redis_url.as_str())?;
-    let redis = client.get_tokio_connection_manager().await?;
 
-    let state = AppState { redis };
+    // 2. Загрузка Карты
+    let map_path = "crates/traffic-sim/assets/berlin.osm.pbf";
+    tracing::info!("🗺️ Loading map for API...");
+    let graph = RoadGraph::load_from_pbf(map_path)?;
+    tracing::info!("✅ API Map loaded: {} roads", graph.edges.len());
 
+    // 3. Канал для WebSocket
+    let (tx, _rx) = broadcast::channel(100);
+
+    // 4. Состояние
+    let app_state = Arc::new(AppState {
+        redis_client: client,
+        tx: tx.clone(),
+        map: Arc::new(graph),
+    });
+
+    // 5. Роутер
     let app = Router::new()
+        .route("/health", get(health_check))
         .route("/ws", get(ws_handler))
-        .route("/health", get(|| async { "OK" }))
-        .layer(
-            tower_http::cors::CorsLayer::new()
-                .allow_origin(tower_http::cors::Any)
-                .allow_methods(tower_http::cors::Any),
-        )
-        .with_state(Arc::new(state));
+        .route("/map", get(get_map_geometry))
+        .with_state(app_state.clone()); // Клонируем Arc для передачи
 
-    let addr = "0.0.0.0:3000";
-    tracing::info!("API listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    // 6. Запуск сервера (СИНТАКСИС AXUM 0.7)
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    tracing::info!("🚀 API listening on {}", addr);
+
+    // Запускаем чтение Redis в фоне
+    let redis_clone = app_state.redis_client.clone();
+    let tx_clone = tx.clone();
+    tokio::spawn(async move {
+        listen_redis_updates(redis_clone, tx_clone).await;
+    });
+
+    // В версии 0.7 используем TcpListener и axum::serve
+    let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    Query(params): Query<ViewportParams>,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    tracing::info!("🔌 New client connected: {:?}", params);
-    ws.on_upgrade(move |socket| handle_socket(socket, state, params))
+// --- Handlers ---
+
+async fn health_check() -> &'static str {
+    "OK"
 }
 
-async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, viewport: ViewportParams) {
-    let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
-    let mut redis = state.redis.clone();
+// Ручка для получения карты
+async fn get_map_geometry(State(state): State<Arc<AppState>>) -> Json<Vec<Road>> {
+    Json(state.map.edges.clone())
+}
 
-    loop {
-        interval.tick().await;
+// WebSocket
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
+}
 
-        match fetch_vehicles_in_viewport(&mut redis, &viewport).await {
-            Ok(vehicles) => {
-                // Логируем только если нашли машины, чтобы не спамить
-                if !vehicles.is_empty() {
-                    tracing::info!("📨 Sending {} vehicles to client", vehicles.len());
-                }
-                // Если 0 машин, логируем раз в 5 секунд (примерно), иначе консоль взорвется
-                // (но для теста пока оставим как есть или можно смотреть на "Found 0" ниже)
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+    let mut rx = state.tx.subscribe();
+    let (mut sender, _receiver) = socket.split();
 
-                let json = serde_json::to_string(&vehicles).unwrap_or_default();
-                if socket.send(Message::Text(json)).await.is_err() {
-                    tracing::warn!("❌ Client disconnected");
-                    break;
-                }
-            }
-            Err(e) => {
-                tracing::error!("❌ Redis error: {}", e);
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
+    while let Ok(msg) = rx.recv().await {
+        if sender.send(Message::Text(msg)).await.is_err() {
+            break;
         }
     }
 }
 
-async fn fetch_vehicles_in_viewport(
-    redis: &mut ConnectionManager,
-    viewport: &ViewportParams,
-) -> Result<Vec<VehicleData>> {
-    tracing::debug!(
-        "🔍 GEORADIUS key='vehicles:current' lon={} lat={} rad={}km",
-        viewport.lon,
-        viewport.lat,
-        viewport.radius_km
-    );
+// Redis Listener
+async fn listen_redis_updates(client: redis::Client, tx: broadcast::Sender<String>) {
+    // Используем get_connection_manager, так как get_async_connection иногда отваливается при разрывах
+    // Но для простоты оставим пока get_multiplexed_async_connection или просто создадим соединение
+    let mut con = client.get_async_connection().await.expect("Redis connect failed");
+    let mut pubsub = con.into_pubsub();
+    pubsub.subscribe("traffic_updates").await.expect("Subscribe failed");
 
-    // Используем сырой запрос redis::cmd, чтобы точно контролировать ответ
-    // GEORADIUS возвращает сложную структуру: [ [name, [lon, lat]], ... ]
-    // Библиотека redis-rs иногда путается в типах, поэтому парсим вручную.
-
-    let raw_results: Vec<redis::Value> = redis::cmd("GEORADIUS")
-        .arg("vehicles:current")
-        .arg(viewport.lon)
-        .arg(viewport.lat)
-        .arg(viewport.radius_km)
-        .arg("km")
-        .arg("WITHCOORD")
-        .query_async(redis)
-        .await?;
-
-    let mut vehicles = Vec::with_capacity(raw_results.len());
-
-    for item in raw_results {
-        // Парсим каждый элемент ответа [name, [lon, lat]]
-        if let redis::Value::Bulk(items) = item {
-            if items.len() >= 2 {
-                // 1. Получаем ID
-                let id_val = &items[0];
-                let id: String = redis::from_redis_value(id_val)?;
-
-                // 2. Получаем Координаты (это вложенный Bulk)
-                let coords_val = &items[1];
-                if let redis::Value::Bulk(coords) = coords_val {
-                    if coords.len() >= 2 {
-                        let lon: f64 = redis::from_redis_value(&coords[0])?;
-                        let lat: f64 = redis::from_redis_value(&coords[1])?;
-
-                        vehicles.push(VehicleData {
-                            id,
-                            lat,
-                            lon,
-                            speed: 15.0, // Заглушка
-                        });
-                    }
-                }
-            }
+    while let Some(msg) = pubsub.on_message().next().await {
+        if let Ok(payload) = msg.get_payload::<String>() {
+            let _ = tx.send(payload);
         }
     }
-
-    if vehicles.is_empty() {
-        tracing::warn!("⚠️ Found 0 vehicles (parsed).");
-    } else {
-        tracing::info!("✅ Successfully parsed {} vehicles", vehicles.len());
-    }
-
-    Ok(vehicles)
 }

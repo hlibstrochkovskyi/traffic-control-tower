@@ -16,4 +16,6 @@ pub mod error;
 pub use error::{Result, TrafficError};
 
 pub mod telemetry;
+pub mod map;
+
 pub use telemetry::init_tracing;
