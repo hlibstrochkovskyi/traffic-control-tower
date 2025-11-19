@@ -8,18 +8,15 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{info, error};
 use common::telemetry;
-use common::map::load_map; // Импортируем ТОЛЬКО функцию загрузки
+use common::map::RoadGraph;
 use tower_http::cors::CorsLayer;
-use serde::Serialize; // Нужен для сериализации Road
+use serde::Serialize;
 
-// --- СТРУКТУРЫ ДАННЫХ ---
-
-// Описываем, как выглядит дорога для Фронтенда
+// Структура дороги для фронтенда
 #[derive(Serialize, Clone)]
 struct Road {
     id: u64,
-    // glam::DVec2 сериализуется как [x, y], что и нужно нашему исправленному фронту
-    geometry: Vec<glam::DVec2>,
+    geometry: Vec<[f64; 2]>, // [lon, lat]
 }
 
 struct AppState {
@@ -32,23 +29,33 @@ async fn main() -> anyhow::Result<()> {
     telemetry::init_tracing("traffic-api");
     info!("🗺️ Loading map for API...");
 
-    // Загрузка карты
-    let map_points = match load_map("crates/traffic-sim/assets/berlin.osm.pbf") {
-        Ok(map) => {
-            info!("✅ API Map loaded: {} roads", map.graph.edge_count());
-            // Конвертируем граф в простой список дорог для JSON
-            map.graph.edge_references().map(|e| {
-                Road {
-                    id: e.id().index() as u64,
-                    geometry: e.weight().geometry.clone(),
-                }
-            }).collect()
+    // Загрузка карты через правильную функцию
+    let road_graph = match RoadGraph::load_from_pbf("crates/traffic-sim/assets/berlin.osm.pbf") {
+        Ok(graph) => {
+            info!("✅ API Map loaded: {} roads", graph.edges.len());
+            graph
         },
         Err(e) => {
             error!("❌ Failed to load map: {}", e);
-            vec![]
+            RoadGraph::default() // Пустая карта, если не загрузилась
         }
     };
+
+    // Конвертируем дороги в формат для фронтенда
+    let map_points: Vec<Road> = road_graph.edges
+        .iter()
+        .take(3000) // Ограничиваем для производительности
+        .enumerate()
+        .map(|(idx, road)| Road {
+            id: road.id as u64,
+            geometry: road.geometry
+                .iter()
+                .map(|point| [point.x, point.y]) // DVec2 -> [lon, lat]
+                .collect(),
+        })
+        .collect();
+
+    info!("📊 Prepared {} road segments for frontend", map_points.len());
 
     let (tx, _rx) = broadcast::channel(100);
 

@@ -13,4 +13,5 @@ tracing-subscriber = "0.3"
 # 👇 Этих ребят не хватало:
 redis = { version = "0.24", features = ["tokio-comp"] }
 tower-http = { version = "0.5", features = ["cors"] }
-common = { path = "../common" }
+common = { path = "../common", package = "traffic-common" } # ВАЖНО: правильное имя пакета
+anyhow = "1.0"

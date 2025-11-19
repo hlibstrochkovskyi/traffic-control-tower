@@ -2,8 +2,8 @@ mod components;
 mod systems;
 
 use bevy_ecs::prelude::*;
-use components::*; // Отсюда теперь берется DeltaTime
-// use systems::movement::*; // Отключено
+use components::*;
+use systems::movement::*;
 use systems::broadcast::*;
 use traffic_common::{init_tracing, Config};
 use traffic_common::map::RoadGraph;
@@ -15,7 +15,7 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 
 #[tokio::main]
-async fn    main() -> Result<()> {
+async fn main() -> Result<()> {
     init_tracing("traffic-sim");
     let config = Config::from_env()?;
 
@@ -23,7 +23,6 @@ async fn    main() -> Result<()> {
 
     // 1. Загружаем Карту
     let map_path = "crates/traffic-sim/assets/berlin.osm.pbf";
-    // Загружаем граф, но пока НЕ кладем его в world, чтобы владеть им здесь
     let road_graph = RoadGraph::load_from_pbf(map_path)?;
 
     // 2. Инициализация ресурсов
@@ -39,7 +38,9 @@ async fn    main() -> Result<()> {
     // 3. Настройка систем
     let mut schedule = Schedule::default();
     schedule.add_systems((
-        broadcast_system,
+        movement_system,      // ← Система движения
+        sync_position_system, // ← Синхронизация графовой и визуальной позиции
+        broadcast_system,     // ← Отправка данных в Kafka
     ));
 
     // 4. Спавним машины (передаем граф явно как аргумент)
@@ -51,7 +52,7 @@ async fn    main() -> Result<()> {
     tracing::info!("🚀 Simulation loop starting...");
 
     let mut last_tick = Instant::now();
-    let target_frametime = Duration::from_millis(16);
+    let target_frametime = Duration::from_millis(16); // 60 FPS
 
     loop {
         let now = Instant::now();
@@ -68,7 +69,7 @@ async fn    main() -> Result<()> {
     }
 }
 
-// ИСПРАВЛЕНИЕ: Добавили аргумент graph: &RoadGraph
+// Спавн машин на случайных дорогах
 fn spawn_vehicles_on_graph(world: &mut World, graph: &RoadGraph, count: usize) {
     let mut rng = rand::thread_rng();
     let edge_count = graph.edges.len();
@@ -85,7 +86,9 @@ fn spawn_vehicles_on_graph(world: &mut World, graph: &RoadGraph, count: usize) {
         let edge_idx = rng.gen_range(0..edge_count);
         let road = &graph.edges[edge_idx];
 
-        if road.geometry.is_empty() { continue; }
+        if road.geometry.is_empty() {
+            continue;
+        }
 
         // 2. Ставим машину в начало этой дороги
         let start_pos = road.geometry[0];
@@ -106,5 +109,6 @@ fn spawn_vehicles_on_graph(world: &mut World, graph: &RoadGraph, count: usize) {
             TargetSpeed(rng.gen_range(10.0..20.0)),
         ));
     }
-    tracing::info!("✅ Vehicles spawned.");
+
+    tracing::info!("✅ {} vehicles spawned.", count);
 }
