@@ -2,9 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import DeckGL from '@deck.gl/react';
 import { ScatterplotLayer } from '@deck.gl/layers';
 import { Map } from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
-// Description of the vehicle type
+// Используем светлую карту (Positron), чтобы видеть улицы
+const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+
 interface Vehicle {
   id: string;
   lat: number;
@@ -12,15 +15,14 @@ interface Vehicle {
   speed: number;
 }
 
-// Mapbox token (you can keep a placeholder if you don't have your own)
-const MAPBOX_TOKEN = "pk.eyJ1IjoidHJhZmZpYy10b3dlciIsImEiOiJjbHUxb3BqbW8wMTZ4MmtyemE2ZHp6enJ6In0.placeholder"; 
-
 export default function App() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  
+  // Начальная позиция камеры - Центр Берлина
   const [viewState, setViewState] = useState({
     longitude: 13.40,
     latitude: 52.52,
-    zoom: 11,
+    zoom: 10.5, // Чуть отдалим, чтобы видеть все кольцо
     pitch: 0,
     bearing: 0
   });
@@ -28,9 +30,9 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Connect to the WebSocket API
+    // Подключаемся к WebSocket
     const ws = new WebSocket(
-      `ws://localhost:3000/ws?lat=${viewState.latitude}&lon=${viewState.longitude}&radius_km=20`
+      `ws://localhost:3000/ws?lat=${viewState.latitude}&lon=${viewState.longitude}&radius_km=50`
     );
 
     ws.onopen = () => console.log('✅ WebSocket connected');
@@ -38,15 +40,14 @@ export default function App() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("Пришли данные:", data);
-        setVehicles(data);
+        // Если данных нет, не обновляем стейт пустым массивом, чтобы не моргало
+        if (data && data.length > 0) {
+            setVehicles(data);
+        }
       } catch (err) {
         console.error('Parse error:', err);
       }
     };
-
-    ws.onerror = (error) => console.error('WebSocket error:', error);
-    ws.onclose = () => console.log('❌ WebSocket closed');
 
     wsRef.current = ws;
 
@@ -55,72 +56,72 @@ export default function App() {
         ws.close();
       }
     };
-  }, []);
+  }, []); // Запускаем один раз при старте
 
-  // Vehicles layer
-  const layer = new ScatterplotLayer({
+const layer = new ScatterplotLayer({
     id: 'vehicles',
     data: vehicles,
     pickable: true,
-    opacity: 0.8,
+    opacity: 1,             // Полная непрозрачность
     stroked: true,
     filled: true,
-    radiusScale: 6,
-    radiusMinPixels: 3,
-    radiusMaxPixels: 15,
-    lineWidthMinPixels: 1,
+    radiusScale: 1,         // Масштаб 1:1 к метрам (примерно)
+    radiusMinPixels: 8,     // ОЧЕНЬ КРУПНЫЕ ТОЧКИ (чтобы точно увидеть)
+    radiusMaxPixels: 20,
     getPosition: (d: Vehicle) => [d.lon, d.lat],
     getFillColor: (d: Vehicle) => {
-      const speed = d.speed; 
-      if (speed < 10) return [255, 0, 0];       // Red
-      if (speed < 30) return [255, 165, 0];     // Orange
-      return [0, 255, 0];                       // Green
+      // Логика цвета от скорости (которую мы задали в Rust)
+      // 0.0008 (Rust) ~ 80 (в единицах фронта после умножения)
+      // 0.0003 (Rust) ~ 30
+      
+      if (d.speed > 50) { 
+          return [255, 0, 0]; // КРАСНЫЙ (Линия)
+      } else {
+          return [0, 100, 255]; // СИНИЙ (Кольцо)
+      }
     },
-    getLineColor: [0, 0, 0],
-    onClick: (info: any) => {
-       if (info.object) {
-         alert(`🚗 Vehicle: ${info.object.id}\nSpeed: ${info.object.speed.toFixed(1)} km/h`);
-       }
+    getLineColor: [255, 255, 255], // Белая обводка для контраста
+    lineWidthMinPixels: 2,
+    updateTriggers: {
+        getFillColor: [vehicles]
     }
   });
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#111' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#e5e5e5' }}>
       <DeckGL
-        viewState={viewState}
+        initialViewState={viewState}
         controller={true}
         layers={[layer]}
         onViewStateChange={(e: any) => setViewState(e.viewState)}
       >
         <Map
-          mapboxAccessToken={MAPBOX_TOKEN}
-          mapStyle="mapbox://styles/mapbox/dark-v9"
+          mapLib={maplibregl}
+          mapStyle={MAP_STYLE}
         />
       </DeckGL>
-
-      {/* Stats panel */}
+      
+      {/* Панель статистики */}
       <div style={{
         position: 'absolute',
         top: 20,
         left: 20,
         zIndex: 1,
-        background: 'rgba(30,30,30,0.9)',
-        color: 'white',
+        background: 'white',
         padding: '20px',
-        borderRadius: '12px',
-        fontFamily: 'monospace',
+        borderRadius: '8px',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        fontFamily: 'sans-serif',
         fontSize: '14px',
-        border: '1px solid #444',
-        pointerEvents: 'none'
       }}>
-        <div style={{ fontSize: '18px', marginBottom: '10px', fontWeight: 'bold' }}>
-          🚦 Traffic Tower
+        <div style={{ fontSize: '18px', marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>
+          🚦 Berlin Traffic Tower
         </div>
-        <div style={{ color: '#4ade80', fontSize: '1.2em' }}>
-          Active Vehicles: {vehicles.length}
+        <div style={{ color: '#2563eb', fontSize: '1.2em', fontWeight: 'bold' }}>
+          Vehicles: {vehicles.length}
         </div>
-        <div style={{ color: '#aaa', marginTop: '5px', fontSize: '12px' }}>
-          Live Feed from Redis
+        <div style={{ color: '#666', marginTop: '5px', fontSize: '12px' }}>
+          Real-time Simulation
         </div>
       </div>
     </div>

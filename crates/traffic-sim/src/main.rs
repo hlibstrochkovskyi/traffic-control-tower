@@ -6,30 +6,25 @@ use bevy_ecs::prelude::*;
 use components::*;
 use systems::movement::*;
 use systems::broadcast::*;
-use routes::berlin_ring_route;
 use traffic_common::{Config, init_tracing};
 use glam::Vec2;
 use std::time::{Duration, Instant};
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 use anyhow::{Context, Result};
+use routes::berlin_ring_route;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing("traffic-sim");
     let config = Config::from_env()?;
 
-    // 1. ECS setup
     let mut world = World::new();
     let mut schedule = Schedule::default();
 
-    // 2. Resources (global variables)
-    // DeltaTime: time between frames (for physics)
     world.insert_resource(DeltaTime(1.0 / 60.0));
-    // BroadcastCounter: to avoid sending to Kafka every frame
     world.insert_resource(BroadcastCounter(0));
 
-    // Kafka Producer
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &config.kafka_brokers)
         .set("message.timeout.ms", "5000")
@@ -37,36 +32,41 @@ async fn main() -> Result<()> {
         .context("Failed to create Kafka producer")?;
     world.insert_resource(KafkaProducer(producer));
 
-    // 3. Systems (logic that runs each frame)
     schedule.add_systems((
-        steering_system,                         // 1. Steer to the target
-        movement_system.after(steering_system),  // 2. Move
-        waypoint_system.after(movement_system),  // 3. Check if arrived
-        broadcast_system.after(waypoint_system), // 4. Send to Kafka
+        steering_system,
+        movement_system.after(steering_system),
+        waypoint_system.after(movement_system),
+        broadcast_system.after(waypoint_system),
     ));
 
-    // 4. Spawn vehicles (5000 of them!)
-    tracing::info!("Spawning 5000 vehicles...");
-    spawn_vehicles(&mut world, 5000);
-    tracing::info!("Simulation started. Press Ctrl+C to stop.");
+    // === DEBUG SCENARIO ===
+    tracing::info!("🧪 Starting DEBUG mode: 50 cars total");
 
-    // 5. Main loop (game loop)
+    // Группа 1: СИНИЕ (Кольцо) - 25 машин
+    // Скорость 0.0003 (медленные)
+    spawn_group(&mut world, 25, berlin_ring_route(), 0.0003, "ring");
+
+    // Группа 2: КРАСНЫЕ (Линия) - 25 машин
+    // Прямая линия через центр: от 13.30 до 13.50 по широте 52.52
+    let line_route = vec![
+        Vec2::new(13.30, 52.52),
+        Vec2::new(13.50, 52.52),
+        Vec2::new(13.30, 52.52), // Обратно
+    ];
+    // Скорость 0.0008 (быстрые)
+    spawn_group(&mut world, 25, line_route, 0.0008, "line");
+
+    tracing::info!("✅ Debug vehicles spawned. Look for RED line and BLUE ring.");
+
     let mut last_tick = Instant::now();
-    let target_frametime = Duration::from_millis(16); // ~60 FPS
+    let target_frametime = Duration::from_millis(16);
 
     loop {
         let now = Instant::now();
-        // Calculate real dt (frame time)
         let delta = (now - last_tick).as_secs_f32();
         last_tick = now;
-
-        // Update the time resource in ECS
         *world.resource_mut::<DeltaTime>() = DeltaTime(delta);
-
-        // RUN ALL SYSTEMS
         schedule.run(&mut world);
-
-        // FPS limiting (to avoid maxing the CPU unnecessarily)
         let elapsed = Instant::now() - now;
         if elapsed < target_frametime {
             tokio::time::sleep(target_frametime - elapsed).await;
@@ -74,39 +74,21 @@ async fn main() -> Result<()> {
     }
 }
 
-fn spawn_vehicles(world: &mut World, count: usize) {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
-    // Get the shared Berlin ring route waypoints
-    let waypoints = berlin_ring_route();
-    let num_waypoints = waypoints.len();
-
+fn spawn_group(world: &mut World, count: usize, route: Vec<Vec2>, speed: f32, prefix: &str) {
     for i in 0..count {
-        // Distribute vehicles evenly along the route (using modulo to cycle through waypoints)
-        let waypoint_index = i % num_waypoints;
-        let base_pos = waypoints[waypoint_index];
-        
-        // Add small random offset (±0.0001°) to avoid perfect overlap
-        let start_pos = Vec2::new(
-            base_pos.x + rng.gen_range(-0.0001..0.0001),
-            base_pos.y + rng.gen_range(-0.0001..0.0001),
-        );
+        // Равномерно распределяем по маршруту
+        let wp_idx = i % route.len();
+        let start_pos = route[wp_idx];
 
-        // Next waypoint in sequence (circular)
-        let next_waypoint_index = (waypoint_index + 1) % num_waypoints;
-
-        // Create an Entity with a set of Components
         world.spawn((
-            VehicleId(format!("car_{}", i)),
+            VehicleId(format!("{}_{}", prefix, i)),
             Position(start_pos),
-            Velocity(Vec2::ZERO), // Initially stationary
+            Velocity(Vec2::ZERO),
             Route {
-                waypoints: waypoints.clone(),
-                current_waypoint: next_waypoint_index,
+                waypoints: route.clone(),
+                current_waypoint: (wp_idx + 1) % route.len(),
             },
-            // Uniform speed (0.0008) for clear visualization
-            TargetSpeed(0.0008),
+            TargetSpeed(speed),
         ));
     }
 }

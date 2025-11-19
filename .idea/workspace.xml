@@ -22,7 +22,8 @@
   <component name="ChangeListManager">
     <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
