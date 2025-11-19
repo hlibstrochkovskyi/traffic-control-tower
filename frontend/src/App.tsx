@@ -4,15 +4,12 @@ import useWebSocket from 'react-use-websocket'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 
-// Типы данных (совпадают с Rust)
-interface DVec2 {
-  x: number; // lon
-  y: number; // lat
-}
+// 1. Исправляем тип координат. Rust (glam) шлет массив [lon, lat]
+type Coordinate = [number, number]; 
 
 interface Road {
   id: number;
-  geometry: DVec2[]; // Массив точек
+  geometry: Coordinate[]; 
 }
 
 interface Vehicle {
@@ -27,11 +24,12 @@ function App() {
   const [roads, setRoads] = useState<Road[]>([]);
   const [isLoadingMap, setIsLoadingMap] = useState(true);
 
-  // 1. WebSocket для машин
+  // Подключение к WebSocket (порт 3000, как в твоем docker-compose/api)
   const { lastMessage } = useWebSocket('ws://localhost:3000/ws', {
     shouldReconnect: () => true,
   });
 
+  // Обработка сообщений от машин
   useEffect(() => {
     if (lastMessage !== null) {
       try {
@@ -45,18 +43,14 @@ function App() {
     }
   }, [lastMessage]);
 
-  // 2. Загрузка карты при старте
+  // Загрузка карты дорог (один раз при старте)
   useEffect(() => {
     fetch('http://localhost:3000/map')
       .then(res => res.json())
       .then((data: Road[]) => {
-        console.log(`Received ${data.length} roads from API`);
-        
-        // --- ВАЖНОЕ ИСПРАВЛЕНИЕ ---
-        // Берлин огромный (600k дорог). Браузер умрет, если рисовать всё.
-        // Берем только первые 3000 дорог для теста визуализации.
+        console.log("Map data loaded, segments:", data.length);
+        // Берем первые 3000 кусков дорог, чтобы не положить браузер
         const safeSubset = data.slice(0, 3000); 
-        
         setRoads(safeSubset);
         setIsLoadingMap(false);
       })
@@ -80,37 +74,28 @@ function App() {
             {isLoadingMap ? "Loading..." : roads.length}
           </p>
         </div>
-        <div className="vehicle-list">
-          {vehicles.slice(0, 10).map(v => (
-            <div key={v.id} className="vehicle-item">
-              🚗 {v.id} <span className="speed">{v.speed.toFixed(1)} km/h</span>
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="map-container">
-        {/* Центр Берлина (Alexanderplatz) */}
+        {/* Центр карты (Берлин) */}
         <MapContainer center={[52.5200, 13.4050]} zoom={14} style={{ height: '100%', width: '100%' }}>
-          
-          {/* Темная тема карты (Cyberpunk style) */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+            attribution='OSM'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
 
-          {/* ОТРИСОВКА ДОРОГ (Линии) */}
+          {/* ОТРИСОВКА ДОРОГ (Синие линии) */}
           {roads.map((road) => (
             <Polyline
               key={road.id}
-              // Leaflet ждет [lat, lon], а у нас [x=lon, y=lat]. Меняем местами!
-              positions={road.geometry.map(p => [p.y, p.x])}
-              pathOptions={{ color: '#00f2ff', weight: 2, opacity: 0.5 }}
+              // ВАЖНО: Leaflet ждет [Lat, Lon], а GeoJSON/Rust дает [Lon, Lat].
+              // Поэтому меняем p[1] и p[0] местами.
+              positions={road.geometry.map(p => [p[1], p[0]])}
+              pathOptions={{ color: '#00f2ff', weight: 2, opacity: 0.6 }}
             />
           ))}
 
-          {/* ОТРИСОВКА МАШИН (Точки) */}
-          {/* Ограничиваем отрисовку 500 машинами, чтобы не лагало */}
+          {/* ОТРИСОВКА МАШИН (Красные точки) */}
           {vehicles.slice(0, 500).map((v) => (
             <CircleMarker 
               key={v.id} 
@@ -118,9 +103,7 @@ function App() {
               radius={4}
               pathOptions={{ color: '#ff0055', fillColor: '#ff0055', fillOpacity: 1 }}
             >
-              <Popup>
-                <b>{v.id}</b><br/>Speed: {v.speed.toFixed(1)}
-              </Popup>
+               <Popup>{v.id}</Popup>
             </CircleMarker>
           ))}
         </MapContainer>

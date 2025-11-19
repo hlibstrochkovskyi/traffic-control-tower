@@ -1,113 +1,134 @@
 use axum::{
-    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
+    extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
     response::IntoResponse,
     routing::get,
-    Router,
-    Json,
+    Json, Router,
 };
-// Убрали лишние импорты, чтобы не было варнингов
-use futures::{sink::SinkExt, stream::StreamExt};
-use std::{sync::Arc, net::SocketAddr};
+use std::sync::Arc;
 use tokio::sync::broadcast;
-use tokio::net::TcpListener; // <--- НУЖНО ДЛЯ AXUM 0.7
-use traffic_common::{Config, init_tracing};
-use traffic_common::map::{RoadGraph, Road};
-use anyhow::Result;
+use tracing::{info, error};
+use common::telemetry;
+use common::map::load_map; // Импортируем ТОЛЬКО функцию загрузки
+use tower_http::cors::CorsLayer;
+use serde::Serialize; // Нужен для сериализации Road
 
-// Состояние приложения
+// --- СТРУКТУРЫ ДАННЫХ ---
+
+// Описываем, как выглядит дорога для Фронтенда
+#[derive(Serialize, Clone)]
+struct Road {
+    id: u64,
+    // glam::DVec2 сериализуется как [x, y], что и нужно нашему исправленному фронту
+    geometry: Vec<glam::DVec2>,
+}
+
 struct AppState {
-    redis_client: redis::Client,
     tx: broadcast::Sender<String>,
-    map: Arc<RoadGraph>,
+    map_points: Vec<Road>,
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    init_tracing("traffic-api");
-    let config = Config::from_env()?;
+async fn main() -> anyhow::Result<()> {
+    telemetry::init_tracing("traffic-api");
+    info!("🗺️ Loading map for API...");
 
-    // 1. Подключение к Redis
-    let client = redis::Client::open(config.redis_url.as_str())?;
+    // Загрузка карты
+    let map_points = match load_map("crates/traffic-sim/assets/berlin.osm.pbf") {
+        Ok(map) => {
+            info!("✅ API Map loaded: {} roads", map.graph.edge_count());
+            // Конвертируем граф в простой список дорог для JSON
+            map.graph.edge_references().map(|e| {
+                Road {
+                    id: e.id().index() as u64,
+                    geometry: e.weight().geometry.clone(),
+                }
+            }).collect()
+        },
+        Err(e) => {
+            error!("❌ Failed to load map: {}", e);
+            vec![]
+        }
+    };
 
-    // 2. Загрузка Карты
-    let map_path = "crates/traffic-sim/assets/berlin.osm.pbf";
-    tracing::info!("🗺️ Loading map for API...");
-    let graph = RoadGraph::load_from_pbf(map_path)?;
-    tracing::info!("✅ API Map loaded: {} roads", graph.edges.len());
-
-    // 3. Канал для WebSocket
     let (tx, _rx) = broadcast::channel(100);
 
-    // 4. Состояние
-    let app_state = Arc::new(AppState {
-        redis_client: client,
+    let shared_state = Arc::new(AppState {
         tx: tx.clone(),
-        map: Arc::new(graph),
+        map_points,
     });
 
-    // 5. Роутер
-    let app = Router::new()
-        .route("/health", get(health_check))
-        .route("/ws", get(ws_handler))
-        .route("/map", get(get_map_geometry))
-        .with_state(app_state.clone()); // Клонируем Arc для передачи
-
-    // 6. Запуск сервера (СИНТАКСИС AXUM 0.7)
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    tracing::info!("🚀 API listening on {}", addr);
-
-    // Запускаем чтение Redis в фоне
-    let redis_clone = app_state.redis_client.clone();
-    let tx_clone = tx.clone();
+    // Redis Listener
+    let state_clone = shared_state.clone();
     tokio::spawn(async move {
-        listen_redis_updates(redis_clone, tx_clone).await;
+        subscribe_redis(state_clone).await;
     });
 
-    // В версии 0.7 используем TcpListener и axum::serve
-    let listener = TcpListener::bind(addr).await?;
+    // Роутер
+    let app = Router::new()
+        .route("/health", get(|| async { "OK" }))
+        .route("/map", get(get_map))
+        .route("/ws", get(ws_handler))
+        .with_state(shared_state)
+        .layer(CorsLayer::permissive());
+
+    info!("🚀 API listening on 0.0.0.0:3000");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     axum::serve(listener, app).await?;
 
     Ok(())
 }
 
-// --- Handlers ---
+// --- ХЕНДЛЕРЫ ---
 
-async fn health_check() -> &'static str {
-    "OK"
+async fn get_map(State(state): State<Arc<AppState>>) -> Json<Vec<Road>> {
+    Json(state.map_points.clone())
 }
 
-// Ручка для получения карты
-async fn get_map_geometry(State(state): State<Arc<AppState>>) -> Json<Vec<Road>> {
-    Json(state.map.edges.clone())
-}
-
-// WebSocket
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
     let mut rx = state.tx.subscribe();
-    let (mut sender, _receiver) = socket.split();
-
     while let Ok(msg) = rx.recv().await {
-        if sender.send(Message::Text(msg)).await.is_err() {
+        if socket.send(Message::Text(msg)).await.is_err() {
             break;
         }
     }
 }
 
-// Redis Listener
-async fn listen_redis_updates(client: redis::Client, tx: broadcast::Sender<String>) {
-    // Используем get_connection_manager, так как get_async_connection иногда отваливается при разрывах
-    // Но для простоты оставим пока get_multiplexed_async_connection или просто создадим соединение
-    let mut con = client.get_async_connection().await.expect("Redis connect failed");
-    let mut pubsub = con.into_pubsub();
-    pubsub.subscribe("traffic_updates").await.expect("Subscribe failed");
-
-    while let Some(msg) = pubsub.on_message().next().await {
-        if let Ok(payload) = msg.get_payload::<String>() {
-            let _ = tx.send(payload);
+async fn subscribe_redis(state: Arc<AppState>) {
+    let client = match redis::Client::open("redis://127.0.0.1:6379/") {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to create Redis client: {}", e);
+            return;
         }
+    };
+
+    let mut con = match client.get_async_connection().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to connect to Redis: {}", e);
+            return;
+        }
+    };
+
+    let mut pubsub = con.into_pubsub();
+    if let Err(e) = pubsub.subscribe("vehicles:update").await {
+        error!("Failed to subscribe to channel: {}", e);
+        return;
+    }
+
+    use futures_util::StreamExt;
+    while let Some(msg) = pubsub.on_message().next().await {
+        let payload: String = match msg.get_payload() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let _ = state.tx.send(payload);
     }
 }

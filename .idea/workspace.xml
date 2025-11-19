@@ -20,17 +20,11 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor broadcast system; optimize Kafka message sending and enhance vehicle data structure">
+    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor frontend map visualization; switch to React-Leaflet, enhance WebSocket handling, and optimize vehicle data rendering">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/common/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/crates/common/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/common/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/common/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/crates/traffic-api/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-api/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/map.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/common/src/map.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -208,7 +202,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763587731069</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="Refactor frontend map visualization; switch to React-Leaflet, enhance WebSocket handling, and optimize vehicle data rendering">
+      <option name="closed" value="true" />
+      <created>1763591843118</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1763591843118</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -226,7 +228,8 @@
     <MESSAGE value="Refactor vehicle simulation and visualization; switch to MapLibre, adjust WebSocket parameters, and enhance vehicle spawning logic" />
     <MESSAGE value="Refactor vehicle broadcasting system; optimize Kafka message sending and enhance vehicle data structure" />
     <MESSAGE value="Refactor broadcast system; optimize Kafka message sending and enhance vehicle data structure" />
-    <option name="LAST_COMMIT_MESSAGE" value="Refactor broadcast system; optimize Kafka message sending and enhance vehicle data structure" />
+    <MESSAGE value="Refactor frontend map visualization; switch to React-Leaflet, enhance WebSocket handling, and optimize vehicle data rendering" />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactor frontend map visualization; switch to React-Leaflet, enhance WebSocket handling, and optimize vehicle data rendering" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

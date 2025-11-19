@@ -2916,6 +2916,7 @@ dependencies = [
  "anyhow",
  "axum",
  "futures 0.3.31",
+ "futures-util",
  "redis",
  "serde",
  "serde_json",
