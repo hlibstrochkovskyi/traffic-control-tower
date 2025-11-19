@@ -1,10 +1,12 @@
 mod components;
 mod systems;
+mod routes;
 
 use bevy_ecs::prelude::*;
 use components::*;
 use systems::movement::*;
 use systems::broadcast::*;
+use routes::berlin_ring_route;
 use traffic_common::{Config, init_tracing};
 use glam::Vec2;
 use std::time::{Duration, Instant};
@@ -76,24 +78,23 @@ fn spawn_vehicles(world: &mut World, count: usize) {
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
-    // Center of Berlin: 52.52 N, 13.40 E
-    const CENTER: Vec2 = Vec2::new(13.40, 52.52);
-    // Spread ~5-10 km
-    const SPREAD: f32 = 0.05;
+    // Get the shared Berlin ring route waypoints
+    let waypoints = berlin_ring_route();
+    let num_waypoints = waypoints.len();
 
     for i in 0..count {
+        // Distribute vehicles evenly along the route (using modulo to cycle through waypoints)
+        let waypoint_index = i % num_waypoints;
+        let base_pos = waypoints[waypoint_index];
+        
+        // Add small random offset (±0.0001°) to avoid perfect overlap
         let start_pos = Vec2::new(
-            CENTER.x + rng.gen_range(-SPREAD..SPREAD),
-            CENTER.y + rng.gen_range(-SPREAD..SPREAD),
+            base_pos.x + rng.gen_range(-0.0001..0.0001),
+            base_pos.y + rng.gen_range(-0.0001..0.0001),
         );
 
-        // Simple square route for testing
-        let waypoints = vec![
-            start_pos,
-            start_pos + Vec2::new(0.01, 0.0),
-            start_pos + Vec2::new(0.01, 0.01),
-            start_pos + Vec2::new(0.0, 0.01),
-        ];
+        // Next waypoint in sequence (circular)
+        let next_waypoint_index = (waypoint_index + 1) % num_waypoints;
 
         // Create an Entity with a set of Components
         world.spawn((
@@ -101,11 +102,11 @@ fn spawn_vehicles(world: &mut World, count: usize) {
             Position(start_pos),
             Velocity(Vec2::ZERO), // Initially stationary
             Route {
-                waypoints,
-                current_waypoint: 1, // Head to the second waypoint
+                waypoints: waypoints.clone(),
+                current_waypoint: next_waypoint_index,
             },
-            // Different speed for each car (approx 18 to 54 km/h)
-            TargetSpeed(rng.gen_range(0.0005..0.0015)),
+            // Uniform speed (0.0008) for clear visualization
+            TargetSpeed(0.0008),
         ));
     }
 }

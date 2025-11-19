@@ -34,7 +34,7 @@ pub fn steering_system(
 pub fn waypoint_system(
     mut query: Query<(&Position, &mut Route)>,
 ) {
-    const WAYPOINT_THRESHOLD: f32 = 0.0005;
+    const WAYPOINT_THRESHOLD: f32 = 0.0002;
 
     query.par_iter_mut().for_each(|(pos, mut route)| {
         if let Some(waypoint) = route.waypoints.get(route.current_waypoint) {
