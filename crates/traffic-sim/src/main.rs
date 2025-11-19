@@ -1,62 +1,56 @@
 mod components;
 mod systems;
-mod routes;
+mod map;
 
 use bevy_ecs::prelude::*;
 use components::*;
-use systems::movement::*;
+// use systems::movement::*; // Временно отключаем
 use systems::broadcast::*;
 use traffic_common::{Config, init_tracing};
+use map::RoadGraph;
 use glam::Vec2;
+use rand::Rng;
 use std::time::{Duration, Instant};
+use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
-use anyhow::{Context, Result};
-use routes::berlin_ring_route;
+use crate::systems::movement::DeltaTime;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn    main() -> Result<()> {
     init_tracing("traffic-sim");
     let config = Config::from_env()?;
 
     let mut world = World::new();
-    let mut schedule = Schedule::default();
 
+    // 1. Загружаем Карту
+    let map_path = "crates/traffic-sim/assets/berlin.osm.pbf";
+    // Загружаем граф, но пока НЕ кладем его в world, чтобы владеть им здесь
+    let road_graph = RoadGraph::load_from_pbf(map_path)?;
+
+    // 2. Инициализация ресурсов
     world.insert_resource(DeltaTime(1.0 / 60.0));
     world.insert_resource(BroadcastCounter(0));
 
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &config.kafka_brokers)
         .set("message.timeout.ms", "5000")
-        .create()
-        .context("Failed to create Kafka producer")?;
+        .create()?;
     world.insert_resource(KafkaProducer(producer));
 
+    // 3. Настройка систем
+    let mut schedule = Schedule::default();
     schedule.add_systems((
-        steering_system,
-        movement_system.after(steering_system),
-        waypoint_system.after(movement_system),
-        broadcast_system.after(waypoint_system),
+        broadcast_system,
     ));
 
-    // === DEBUG SCENARIO ===
-    tracing::info!("🧪 Starting DEBUG mode: 50 cars total");
+    // 4. Спавним машины (передаем граф явно как аргумент)
+    spawn_vehicles_on_graph(&mut world, &road_graph, 5000);
 
-    // Группа 1: СИНИЕ (Кольцо) - 25 машин
-    // Скорость 0.0003 (медленные)
-    spawn_group(&mut world, 25, berlin_ring_route(), 0.0003, "ring");
+    // 5. Теперь отдаем карту миру (после спавна она нам в main больше не нужна)
+    world.insert_resource(road_graph);
 
-    // Группа 2: КРАСНЫЕ (Линия) - 25 машин
-    // Прямая линия через центр: от 13.30 до 13.50 по широте 52.52
-    let line_route = vec![
-        Vec2::new(13.30, 52.52),
-        Vec2::new(13.50, 52.52),
-        Vec2::new(13.30, 52.52), // Обратно
-    ];
-    // Скорость 0.0008 (быстрые)
-    spawn_group(&mut world, 25, line_route, 0.0008, "line");
-
-    tracing::info!("✅ Debug vehicles spawned. Look for RED line and BLUE ring.");
+    tracing::info!("🚀 Simulation loop starting...");
 
     let mut last_tick = Instant::now();
     let target_frametime = Duration::from_millis(16);
@@ -65,8 +59,10 @@ async fn main() -> Result<()> {
         let now = Instant::now();
         let delta = (now - last_tick).as_secs_f32();
         last_tick = now;
+
         *world.resource_mut::<DeltaTime>() = DeltaTime(delta);
         schedule.run(&mut world);
+
         let elapsed = Instant::now() - now;
         if elapsed < target_frametime {
             tokio::time::sleep(target_frametime - elapsed).await;
@@ -74,21 +70,43 @@ async fn main() -> Result<()> {
     }
 }
 
-fn spawn_group(world: &mut World, count: usize, route: Vec<Vec2>, speed: f32, prefix: &str) {
+// ИСПРАВЛЕНИЕ: Добавили аргумент graph: &RoadGraph
+fn spawn_vehicles_on_graph(world: &mut World, graph: &RoadGraph, count: usize) {
+    let mut rng = rand::thread_rng();
+    let edge_count = graph.edges.len();
+
+    if edge_count == 0 {
+        tracing::error!("Zero roads found! Cannot spawn vehicles.");
+        return;
+    }
+
+    tracing::info!("🅿️ Spawning {} vehicles on random roads...", count);
+
     for i in 0..count {
-        // Равномерно распределяем по маршруту
-        let wp_idx = i % route.len();
-        let start_pos = route[wp_idx];
+        // 1. Выбираем случайную дорогу
+        let edge_idx = rng.gen_range(0..edge_count);
+        let road = &graph.edges[edge_idx];
+
+        if road.geometry.is_empty() { continue; }
+
+        // 2. Ставим машину в начало этой дороги
+        let start_pos = road.geometry[0];
 
         world.spawn((
-            VehicleId(format!("{}_{}", prefix, i)),
-            Position(start_pos),
-            Velocity(Vec2::ZERO),
-            Route {
-                waypoints: route.clone(),
-                current_waypoint: (wp_idx + 1) % route.len(),
+            VehicleId(format!("car_{}", i)),
+
+            // Графическая позиция (для фронта)
+            Position(Vec2::new(start_pos.x as f32, start_pos.y as f32)),
+
+            // Логическая позиция (для физики)
+            GraphPosition {
+                edge_index: edge_idx,
+                distance: 0.0, // В начале сегмента
             },
-            TargetSpeed(speed),
+
+            Velocity(Vec2::ZERO), // Пока стоят
+            TargetSpeed(rng.gen_range(10.0..20.0)),
         ));
     }
+    tracing::info!("✅ Vehicles spawned.");
 }

@@ -20,10 +20,16 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming">
+    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor vehicle broadcasting system; optimize Kafka message sending and enhance vehicle data structure">
+      <change afterPath="$PROJECT_DIR$/crates/traffic-sim/assets/berlin.osm.pbf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/crates/traffic-sim/src/map.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/components.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/components.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/systems/broadcast.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/systems/broadcast.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/systems/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/systems/mod.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -168,7 +174,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763519921052</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="Refactor vehicle simulation and visualization; switch to MapLibre, adjust WebSocket parameters, and enhance vehicle spawning logic">
+      <option name="closed" value="true" />
+      <created>1763557856496</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1763557856496</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -183,7 +197,9 @@
     <MESSAGE value="Update workspace configuration; adjust toolchain directory, task durations, and add environment variables" />
     <MESSAGE value="Add Bevy ECS integration; implement vehicle simulation and batch processing; update dependencies" />
     <MESSAGE value="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add initial frontend setup with React, TypeScript, and Vite; implement WebSocket for vehicle data streaming" />
+    <MESSAGE value="Refactor vehicle simulation and visualization; switch to MapLibre, adjust WebSocket parameters, and enhance vehicle spawning logic" />
+    <MESSAGE value="Refactor vehicle broadcasting system; optimize Kafka message sending and enhance vehicle data structure" />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactor vehicle broadcasting system; optimize Kafka message sending and enhance vehicle data structure" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
