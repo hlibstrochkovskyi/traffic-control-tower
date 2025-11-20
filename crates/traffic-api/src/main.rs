@@ -6,32 +6,42 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{info, error};
-use common::telemetry;
+use tracing::{info, error, warn}; // Добавили warn
+use common::{telemetry, Config}; // Добавили Config
 use common::map::RoadGraph;
 use tower_http::cors::CorsLayer;
 use serde::Serialize;
 use futures_util::StreamExt;
 
-// Структура дороги для фронтенда
 #[derive(Serialize, Clone)]
 struct Road {
     id: u64,
-    geometry: Vec<[f64; 2]>, // [lon, lat]
+    geometry: Vec<[f64; 2]>,
 }
 
 struct AppState {
     tx: broadcast::Sender<String>,
     map_points: Vec<Road>,
-    total_roads: usize,  // Store total roads count
+    total_roads: usize,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     telemetry::init_tracing("traffic-api");
+
+    // 1. Загружаем конфиг (чтобы брать правильный URL Redis)
+    let config = Config::from_env().unwrap_or_else(|e| {
+        warn!("Failed to load config: {}. Using defaults.", e);
+        Config {
+            kafka_brokers: "localhost:19092".to_string(),
+            postgres_url: "".to_string(),
+            redis_url: "redis://localhost:6379".to_string(), // Используем localhost как в Ingest
+            log_level: "info".to_string(),
+        }
+    });
+
     info!("🗺️ Loading map for API...");
 
-    // Загрузка карты через правильную функцию
     let road_graph = match RoadGraph::load_from_pbf("crates/traffic-sim/assets/berlin.osm.pbf") {
         Ok(graph) => {
             info!("✅ API Map loaded: {} roads", graph.edges.len());
@@ -39,29 +49,24 @@ async fn main() -> anyhow::Result<()> {
         },
         Err(e) => {
             error!("❌ Failed to load map: {}", e);
-            RoadGraph::default() // Пустая карта, если не загрузилась
+            RoadGraph::default()
         }
     };
 
     let total_roads = road_graph.edges.len();
 
-    // Конвертируем дороги в формат для фронтенда
-    // Filter to only major roads for better performance
+    // Без лимита .take(10000), грузим всё!
     let map_points: Vec<Road> = road_graph.edges
         .iter()
-        .enumerate() // [FIX] Добавляем индекс, чтобы сделать ID уникальным
-        .filter(|(_, road)| {
+        .filter(|road| {
             matches!(
                 road.highway_type.as_str(),
-                "motorway" | "trunk" | "primary" | "secondary" | "tertiary"
+                "motorway" | "trunk" | "primary" | "secondary" | "tertiary" |
+                "residential" | "service" | "living_street"
             )
         })
-        .take(10000)
-        .map(|(index, road)| Road {
-            // [FIX] Генерируем уникальный ID.
-            // Можно просто использовать index, или скомбинировать.
-            // Для простоты пока берем просто уникальный индекс в массиве.
-            id: index as u64,
+        .map(|road| Road {
+            id: road.id as u64,
             geometry: road.geometry
                 .iter()
                 .map(|point| [point.x, point.y])
@@ -69,10 +74,9 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    info!("📊 Prepared {} road segments for frontend (from {} total)", 
-          map_points.len(), road_graph.edges.len());
+    info!("📊 Prepared {} road segments for frontend", map_points.len());
 
-    let (tx, _rx) = broadcast::channel(100);
+    let (tx, _rx) = broadcast::channel(1000); // Увеличим буфер на всякий случай
 
     let shared_state = Arc::new(AppState {
         tx: tx.clone(),
@@ -80,13 +84,13 @@ async fn main() -> anyhow::Result<()> {
         total_roads,
     });
 
-    // Redis Listener
+    // Запускаем Redis Listener с конфигом
     let state_clone = shared_state.clone();
+    let redis_url = config.redis_url.clone();
     tokio::spawn(async move {
-        subscribe_redis(state_clone).await;
+        subscribe_redis(state_clone, redis_url).await;
     });
 
-    // Роутер
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/map", get(get_map))
@@ -134,18 +138,24 @@ async fn ws_handler(
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
     let mut rx = state.tx.subscribe();
+    info!("🔌 New WebSocket client connected");
+
     while let Ok(msg) = rx.recv().await {
         if socket.send(Message::Text(msg)).await.is_err() {
+            // Client disconnected
             break;
         }
     }
 }
 
-async fn subscribe_redis(state: Arc<AppState>) {
-    let client = match redis::Client::open("redis://127.0.0.1:6379/") {
+// Исправленная функция подписки
+async fn subscribe_redis(state: Arc<AppState>, redis_url: String) {
+    info!("🔌 Connecting to Redis at: {}", redis_url);
+
+    let client = match redis::Client::open(redis_url.as_str()) {
         Ok(c) => c,
         Err(e) => {
-            error!("Failed to create Redis client: {}", e);
+            error!("❌ Failed to create Redis client: {}", e);
             return;
         }
     };
@@ -153,22 +163,32 @@ async fn subscribe_redis(state: Arc<AppState>) {
     let con = match client.get_async_connection().await {
         Ok(c) => c,
         Err(e) => {
-            error!("Failed to connect to Redis: {}", e);
+            error!("❌ Failed to connect to Redis: {}", e);
             return;
         }
     };
 
     let mut pubsub = con.into_pubsub();
     if let Err(e) = pubsub.subscribe("vehicles:update").await {
-        error!("Failed to subscribe to channel: {}", e);
+        error!("❌ Failed to subscribe to channel: {}", e);
         return;
     }
+
+    info!("✅ Successfully subscribed to 'vehicles:update'. Waiting for messages...");
 
     while let Some(msg) = pubsub.on_message().next().await {
         let payload: String = match msg.get_payload() {
             Ok(p) => p,
-            Err(_) => continue,
+            Err(e) => {
+                error!("Error getting payload: {}", e);
+                continue;
+            }
         };
+
+        // Отправляем в сокеты
+        // Если нет подписчиков, send вернет ошибку, это нормально, игнорируем
         let _ = state.tx.send(payload);
     }
+
+    error!("❌ Redis connection lost!");
 }

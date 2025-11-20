@@ -1,15 +1,17 @@
-// frontend/src/App.tsx
-import { useEffect, useState, useRef } from 'react' // Добавили useRef
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline } from 'react-leaflet'
-import useWebSocket from 'react-use-websocket'
-import 'leaflet/dist/leaflet.css'
-import './App.css'
+import { useEffect, useState, useRef, useMemo } from 'react';
+import MapGL, { NavigationControl } from 'react-map-gl/maplibre';
+import DeckGL from '@deck.gl/react';
+import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import useWebSocket from 'react-use-websocket';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import './App.css';
 
-type Coordinate = [number, number]; 
+// --- ТИПЫ ---
+type Coordinate = [number, number];
 
 interface Road {
   id: number;
-  geometry: Coordinate[]; 
+  geometry: Coordinate[];
 }
 
 interface Vehicle {
@@ -19,72 +21,104 @@ interface Vehicle {
   speed: number;
 }
 
-function App() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [roads, setRoads] = useState<Road[]>([]);
-  const [isLoadingMap, setIsLoadingMap] = useState(true);
-  const [mapError, setMapError] = useState<string | null>(null);
+const INITIAL_VIEW_STATE = {
+  longitude: 13.4050,
+  latitude: 52.5200,
+  zoom: 13,
+  pitch: 0,
+  bearing: 0
+};
 
-  // ИСПОЛЬЗУЕМ REF ДЛЯ ХРАНЕНИЯ СОСТОЯНИЯ БЕЗ ПЕРЕРИСОВКИ
-  // Это наш буфер. React не перерисовывает компонент, когда меняется ref.
-  const vehiclesMap = useRef<Map<string, Vehicle>>(new Map());
+const COLOR_ROAD = [0, 242, 255];
+const COLOR_CAR = [255, 0, 85];
+
+function App() {
+  const [roads, setRoads] = useState<Road[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const vehiclesBuffer = useRef<Map<string, Vehicle>>(new Map());
 
   const { lastMessage } = useWebSocket('ws://localhost:3000/ws', {
     shouldReconnect: () => true,
+    onOpen: () => console.log("✅ WebSocket Connected!"),
+    onClose: () => console.log("❌ WebSocket Disconnected"),
+    onError: (e) => console.error("WebSocket Error:", e),
   });
 
-  // 1. Читаем сообщения и обновляем ТОЛЬКО буфер (быстро)
+  // ОБРАБОТКА СООБЩЕНИЙ
   useEffect(() => {
     if (lastMessage !== null) {
       try {
-        const data = JSON.parse(lastMessage.data);
+        const rawData = JSON.parse(lastMessage.data);
         
-        // Проверка: это одиночная машина или список?
-        if (data.id && data.lat && data.lon) {
-           // Пришла одна машина - обновляем её в карте
-           vehiclesMap.current.set(data.id, data);
-        } else if (data.vehicles) {
-           // (На случай если бэкенд начнет слать пачки)
-           data.vehicles.forEach((v: Vehicle) => vehiclesMap.current.set(v.id, v));
+        // ЛОГ ПЕРВОГО СООБЩЕНИЯ (чтобы понять структуру)
+        if (vehiclesBuffer.current.size === 0) {
+            console.log("📩 First data received:", rawData);
         }
+
+        // Вариант 1: Пришел массив
+        if (Array.isArray(rawData)) {
+             rawData.forEach(v => vehiclesBuffer.current.set(v.id, v));
+        } 
+        // Вариант 2: Пришел объект { vehicles: [...] }
+        else if (rawData.vehicles && Array.isArray(rawData.vehicles)) {
+             rawData.vehicles.forEach((v: Vehicle) => vehiclesBuffer.current.set(v.id, v));
+        }
+        // Вариант 3: Пришла одна машина { id: ... }
+        else if (rawData.id) {
+             vehiclesBuffer.current.set(rawData.id, rawData);
+        }
+
       } catch (e) {
-        console.error("Parse error", e);
+        console.error("WS Parse error", e);
       }
     }
   }, [lastMessage]);
 
-  // 2. Таймер перерисовки (Game Loop для React)
-  // Обновляем State (и вызываем рендер) только раз в 50мс (20 FPS)
+  // GAME LOOP
   useEffect(() => {
     const interval = setInterval(() => {
-      if (vehiclesMap.current.size > 0) {
-        // Превращаем Map обратно в массив для рендеринга
-        setVehicles(Array.from(vehiclesMap.current.values()));
+      if (vehiclesBuffer.current.size > 0) {
+        setVehicles(Array.from(vehiclesBuffer.current.values()));
       }
-    }, 50); 
-
+    }, 33); 
     return () => clearInterval(interval);
   }, []);
 
-  // Загрузка карты (осталась без изменений)
+  // ЗАГРУЗКА КАРТЫ
   useEffect(() => {
     fetch('http://localhost:3000/map')
       .then(res => res.json())
       .then((data: Road[]) => {
-        // Валидация геометрии
-        const validRoads = data.map(r => ({
-            ...r,
-            geometry: r.geometry.map(p => [p[1], p[0]] as Coordinate) // Swap Lat/Lon fix
-        }));
-        setRoads(validRoads);
-        setIsLoadingMap(false);
+        console.log(`🗺️ Loaded ${data.length} roads`);
+        setRoads(data);
       })
-      .catch(err => {
-        console.error(err);
-        setMapError("Failed to load map");
-        setIsLoadingMap(false);
-      });
+      .catch(console.error);
   }, []);
+
+  const layers = useMemo(() => [
+    new PathLayer({
+      id: 'road-layer',
+      data: roads,
+      getPath: (d: Road) => d.geometry,
+      getColor: COLOR_ROAD,
+      getWidth: 5,
+      widthMinPixels: 1, // Чтобы дороги не пропадали при отдалении
+      opacity: 0.3
+    }),
+    
+    new ScatterplotLayer({
+      id: 'vehicle-layer',
+      data: vehicles,
+      getPosition: (d: Vehicle) => [d.lon, d.lat],
+      getFillColor: COLOR_CAR,
+      getRadius: 30,      // [FIX] Увеличили радиус (в метрах)
+      radiusMinPixels: 5, // [FIX] Минимальный размер в пикселях (всегда видно)
+      opacity: 1,
+      stroked: true,
+      getLineColor: [255, 255, 255],
+      lineWidthMinPixels: 1
+    })
+  ], [roads, vehicles]);
 
   return (
     <div className="app-container">
@@ -92,7 +126,7 @@ function App() {
         <h2>Traffic Control</h2>
         <div className="stat-box">
           <h3>Active Vehicles</h3>
-          <p className="stat-number">{vehicles.length}</p>
+          <p className="stat-number" style={{color: '#ff0055'}}>{vehicles.length}</p>
         </div>
         <div className="stat-box">
           <h3>Visible Roads</h3>
@@ -101,38 +135,22 @@ function App() {
       </div>
 
       <div className="map-container">
-        {isLoadingMap ? (
-          <div style={{color: 'white', margin: 'auto'}}>Loading Map...</div>
-        ) : (
-          <MapContainer center={[52.5200, 13.4050]} zoom={13} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            />
-
-            {/* Дороги */}
-            {roads.map((road) => (
-              <Polyline
-                key={road.id}
-                positions={road.geometry}
-                pathOptions={{ color: '#00f2ff', weight: 1, opacity: 0.3 }}
-              />
-            ))}
-
-            {/* Машины (рендерим только первые 1000 чтобы не висело) */}
-            {vehicles.slice(0, 1000).map((v) => (
-              <CircleMarker 
-                key={v.id} 
-                center={[v.lat, v.lon]} 
-                radius={3}
-                pathOptions={{ color: '#ff0055', fillColor: '#ff0055', fillOpacity: 1, stroke: false }}
-              />
-            ))}
-          </MapContainer>
-        )}
+        <DeckGL
+          initialViewState={INITIAL_VIEW_STATE}
+          controller={true}
+          layers={layers}
+          getTooltip={({object}: any) => object && object.id ? `${object.id}` : null}
+        >
+          <MapGL
+            mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+            reuseMaps
+          >
+            <NavigationControl position="top-left" />
+          </MapGL>
+        </DeckGL>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
