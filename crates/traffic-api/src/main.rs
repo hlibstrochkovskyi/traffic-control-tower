@@ -57,8 +57,7 @@ async fn main() -> anyhow::Result<()> {
             )
         })
         .take(10000) // Limit to 10000 major road segments
-        .enumerate()
-        .map(|(_idx, road)| Road {
+        .map(|road| Road {
             id: road.id as u64,
             geometry: road.geometry
                 .iter()

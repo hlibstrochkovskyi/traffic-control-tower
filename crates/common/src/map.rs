@@ -52,7 +52,7 @@ impl RoadGraph {
 
         let mut graph = RoadGraph::default();
 
-        for (_id, obj) in &objs {
+        for obj in objs.values() {
             if let OsmObj::Node(n) = obj {
                 graph.nodes.insert(n.id.0, Node {
                     id: n.id.0,
@@ -63,7 +63,7 @@ impl RoadGraph {
 
         // Process ways to create road segments
         // Each way becomes multiple edge segments for routing
-        for (_id, obj) in &objs {
+        for obj in objs.values() {
             if let OsmObj::Way(w) = obj {
                 let highway = w.tags.get("highway").map(|s| s.as_str()).unwrap_or("");
                 if !is_drivable(highway) {
@@ -109,8 +109,8 @@ impl RoadGraph {
 }
 
 fn is_drivable(highway_type: &str) -> bool {
-    match highway_type {
-        "motorway" | "trunk" | "primary" | "secondary" | "tertiary" | "residential" | "service" | "living_street" => true,
-        _ => false,
-    }
+    matches!(
+        highway_type,
+        "motorway" | "trunk" | "primary" | "secondary" | "tertiary" | "residential" | "service" | "living_street"
+    )
 }
