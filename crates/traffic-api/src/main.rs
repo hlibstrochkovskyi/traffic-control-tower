@@ -49,13 +49,14 @@ async fn main() -> anyhow::Result<()> {
     // Filter to only major roads for better performance
     let map_points: Vec<Road> = road_graph.edges
         .iter()
-        .filter(|_road| {
-            // We can filter by checking the road type if we store it,
-            // For now, we'll use a simple approach: take a reasonable subset
-            // In production, we'd want to filter by highway type
-            true
+        .filter(|road| {
+            // Filter to show only major roads for better performance and clarity
+            matches!(
+                road.highway_type.as_str(),
+                "motorway" | "trunk" | "primary" | "secondary" | "tertiary"
+            )
         })
-        .take(5000) // Limit to 5000 roads for browser performance
+        .take(10000) // Limit to 10000 major road segments
         .enumerate()
         .map(|(_idx, road)| Road {
             id: road.id as u64,

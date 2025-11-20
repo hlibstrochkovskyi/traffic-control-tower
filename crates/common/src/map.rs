@@ -23,6 +23,7 @@ pub struct Road {
     pub end: i64,
     pub length: f64,
     pub geometry: Vec<DVec2>,
+    pub highway_type: String, // Store highway type for filtering (motorway, primary, etc.)
 }
 
 // Добавляем Serialize и Deserialize в список
@@ -61,8 +62,7 @@ impl RoadGraph {
         }
 
         // Process ways to create road segments
-        // Each way becomes multiple edge segments for routing,
-        // but we preserve the full geometry for visualization
+        // Each way becomes multiple edge segments for routing
         for (_id, obj) in &objs {
             if let OsmObj::Way(w) = obj {
                 let highway = w.tags.get("highway").map(|s| s.as_str()).unwrap_or("");
@@ -70,20 +70,8 @@ impl RoadGraph {
                     continue;
                 }
 
-                // Collect all points in this way for full geometry
-                let way_geometry: Vec<DVec2> = w.nodes
-                    .iter()
-                    .filter_map(|node_id| {
-                        graph.nodes.get(&node_id.0).map(|n| n.pos)
-                    })
-                    .collect();
-
-                if way_geometry.len() < 2 {
-                    continue;
-                }
-
                 // Create routing segments between consecutive nodes
-                // Each segment stores the full geometry of its portion of the way
+                // Each segment preserves the road geometry between two nodes
                 for window in w.nodes.windows(2) {
                     let start_id = window[0].0;
                     let end_id = window[1].0;
@@ -93,15 +81,15 @@ impl RoadGraph {
                         let p2 = Point::new(n2.pos.x, n2.pos.y);
                         let dist = p1.haversine_distance(&p2);
 
-                        // For each routing segment, store just its two endpoints
-                        // This keeps routing simple while the full way geometry
-                        // is available for visualization via the way_id
+                        // Store segment with its endpoints and highway type
+                        // Multiple segments from the same way will form curved roads
                         graph.edges.push(Road {
                             id: w.id.0,
                             start: start_id,
                             end: end_id,
                             length: dist,
-                            geometry: vec![n1.pos, n2.pos], // Just segment endpoints
+                            geometry: vec![n1.pos, n2.pos], // Segment endpoints
+                            highway_type: highway.to_string(),
                         });
                     }
                 }
