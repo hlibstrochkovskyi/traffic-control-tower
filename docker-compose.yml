@@ -1,7 +1,11 @@
 version: '3.8'
+
 services:
+  # --- INFRASTRUCTURE ---
+
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
     command:
       - redpanda start
       - --smp 1
@@ -9,19 +13,95 @@ services:
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
     ports:
-      - "19092:19092" # Kafka API
-      - "8081:8081"   # Schema Registry
-      - "8080:8080"   # Redpanda Console (UI)
+      - "19092:19092"
+      - "8081:8081"
+    networks:
+      - traffic-net
 
   postgres:
     image: timescale/timescaledb:latest-pg15
+    container_name: postgres
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: traffic
     ports:
       - "5432:5432"
+    networks:
+      - traffic-net
 
   redis:
     image: redis:7-alpine
+    container_name: redis
     ports:
       - "6379:6379"
+    networks:
+      - traffic-net
+
+  # --- BACKEND SERVICES ---
+
+  traffic-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: traffic-sim
+    command: traffic-sim
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+      REDIS_URL: "redis://redis:6379"
+      RUST_LOG: "info"
+    depends_on:
+      - redpanda
+    networks:
+      - traffic-net
+
+  traffic-ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: traffic-ingest
+    command: traffic-ingest
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+      POSTGRES_URL: "postgres://postgres:password@postgres:5432/traffic"
+      REDIS_URL: "redis://redis:6379"
+      RUST_LOG: "info"
+    depends_on:
+      - redpanda
+      - postgres
+      - redis
+    networks:
+      - traffic-net
+
+  traffic-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: traffic-api
+    command: traffic-api
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      RUST_LOG: "info"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+    networks:
+      - traffic-net
+
+  # --- FRONTEND ---
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: traffic-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - traffic-api
+    networks:
+      - traffic-net
+
+networks:
+  traffic-net:
+    driver: bridge
