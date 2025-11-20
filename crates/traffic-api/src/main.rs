@@ -49,19 +49,22 @@ async fn main() -> anyhow::Result<()> {
     // Filter to only major roads for better performance
     let map_points: Vec<Road> = road_graph.edges
         .iter()
-        .filter(|road| {
-            // Filter to show only major roads for better performance and clarity
+        .enumerate() // [FIX] Добавляем индекс, чтобы сделать ID уникальным
+        .filter(|(_, road)| {
             matches!(
                 road.highway_type.as_str(),
                 "motorway" | "trunk" | "primary" | "secondary" | "tertiary"
             )
         })
-        .take(10000) // Limit to 10000 major road segments
-        .map(|road| Road {
-            id: road.id as u64,
+        .take(10000)
+        .map(|(index, road)| Road {
+            // [FIX] Генерируем уникальный ID.
+            // Можно просто использовать index, или скомбинировать.
+            // Для простоты пока берем просто уникальный индекс в массиве.
+            id: index as u64,
             geometry: road.geometry
                 .iter()
-                .map(|point| [point.x, point.y]) // DVec2 -> [lon, lat]
+                .map(|point| [point.x, point.y])
                 .collect(),
         })
         .collect();

@@ -1,42 +1,54 @@
+/* frontend/src/App.css */
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  height: 100vh;
+  width: 100vw;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.sidebar {
+  width: 300px;
+  background-color: #1a1a1a;
+  color: white;
+  padding: 20px;
+  border-right: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  z-index: 1000; /* Чтобы меню было поверх карты */
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.stat-box {
+  background: #333;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
 }
 
-.card {
-  padding: 2em;
+.stat-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: #646cff;
 }
 
-.read-the-docs {
-  color: #888;
+.map-container {
+  flex-grow: 1;
+  position: relative;
+  height: 100%; /* КРИТИЧНО ДЛЯ LEAFLET */
+  background-color: #000; /* Черный фон, пока грузятся тайлы */
+}
+
+/* Убираем отступы у body, чтобы не было белых полос */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }

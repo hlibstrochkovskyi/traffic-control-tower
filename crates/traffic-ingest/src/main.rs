@@ -35,26 +35,38 @@ impl IngestService {
     }
 
     async fn process(&mut self, position: VehiclePosition) -> Result<()> {
-        // 1. Cold Path: Accumulate a batch for the DB
+        // 1. Cold Path: Накапливаем батч для TimescaleDB
         self.batch_writer.add(position.clone()).await?;
 
-        // 2. Hot Path: Instantly update Redis
-        // Geo-index for the map
+        // 2. Hot Path: Обновляем Redis Geo Index (для поиска "кто рядом")
         let _: () = self.redis.geo_add(
             "vehicles:current",
             (position.longitude, position.latitude, &position.vehicle_id)
         ).await?;
 
-        // Metadata (speed) with TTL 60 seconds
+        // 3. Метаданные (скорость) с TTL 60 секунд
+        // Используем serde_json для создания JSON объекта
         let metadata = serde_json::json!({
             "speed": position.speed,
             "timestamp": position.timestamp
         });
+
         let _: () = self.redis.set_ex(
             format!("vehicle:{}:meta", position.vehicle_id),
             metadata.to_string(),
             60
         ).await?;
+
+        // 4. ПУБЛИКАЦИЯ (Этого не хватало!) [FIX]
+        // Мы отправляем JSON в канал "vehicles:update", который слушает API
+        let payload = serde_json::json!({
+            "id": position.vehicle_id,
+            "lat": position.latitude,
+            "lon": position.longitude,
+            "speed": position.speed
+        }).to_string();
+
+        let _: () = self.redis.publish("vehicles:update", payload).await?;
 
         Ok(())
     }
