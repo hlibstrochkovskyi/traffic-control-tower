@@ -23,6 +23,7 @@ pub struct Road {
     pub end: i64,
     pub length: f64,
     pub geometry: Vec<DVec2>,
+    pub highway_type: String, // Store highway type for filtering (motorway, primary, etc.)
 }
 
 // Добавляем Serialize и Deserialize в список
@@ -51,7 +52,7 @@ impl RoadGraph {
 
         let mut graph = RoadGraph::default();
 
-        for (_id, obj) in &objs {
+        for obj in objs.values() {
             if let OsmObj::Node(n) = obj {
                 graph.nodes.insert(n.id.0, Node {
                     id: n.id.0,
@@ -60,13 +61,17 @@ impl RoadGraph {
             }
         }
 
-        for (_id, obj) in &objs {
+        // Process ways to create road segments
+        // Each way becomes multiple edge segments for routing
+        for obj in objs.values() {
             if let OsmObj::Way(w) = obj {
                 let highway = w.tags.get("highway").map(|s| s.as_str()).unwrap_or("");
                 if !is_drivable(highway) {
                     continue;
                 }
 
+                // Create routing segments between consecutive nodes
+                // Each segment preserves the road geometry between two nodes
                 for window in w.nodes.windows(2) {
                     let start_id = window[0].0;
                     let end_id = window[1].0;
@@ -76,12 +81,15 @@ impl RoadGraph {
                         let p2 = Point::new(n2.pos.x, n2.pos.y);
                         let dist = p1.haversine_distance(&p2);
 
+                        // Store segment with its endpoints and highway type
+                        // Multiple segments from the same way will form curved roads
                         graph.edges.push(Road {
                             id: w.id.0,
                             start: start_id,
                             end: end_id,
                             length: dist,
-                            geometry: vec![n1.pos, n2.pos],
+                            geometry: vec![n1.pos, n2.pos], // Segment endpoints
+                            highway_type: highway.to_string(),
                         });
                     }
                 }
@@ -101,8 +109,8 @@ impl RoadGraph {
 }
 
 fn is_drivable(highway_type: &str) -> bool {
-    match highway_type {
-        "motorway" | "trunk" | "primary" | "secondary" | "tertiary" | "residential" | "service" | "living_street" => true,
-        _ => false,
-    }
+    matches!(
+        highway_type,
+        "motorway" | "trunk" | "primary" | "secondary" | "tertiary" | "residential" | "service" | "living_street"
+    )
 }
