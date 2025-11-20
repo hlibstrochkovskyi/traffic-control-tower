@@ -20,9 +20,8 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor application structure; enhance documentation with detailed comments, improve code readability, and optimize vehicle movement logic">
+    <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor Docker setup; enhance docker-compose configuration with service definitions, add Nginx for frontend, and improve build process for backend services">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -255,7 +254,23 @@
       <option name="project" value="LOCAL" />
       <updated>1763680323007</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="Refactor Docker setup; enhance docker-compose configuration with service definitions, add Nginx for frontend, and improve build process for backend services">
+      <option name="closed" value="true" />
+      <created>1763681976070</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1763681976070</updated>
+    </task>
+    <task id="LOCAL-00021" summary="Refactor Docker setup; enhance docker-compose configuration with service definitions, add Nginx for frontend, and improve build process for backend services">
+      <option name="closed" value="true" />
+      <created>1763682621743</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1763682621743</updated>
+    </task>
+    <option name="localTasksCounter" value="22" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -280,7 +295,8 @@
     <MESSAGE value="Refactor frontend map handling; switch to DeckGL and MapLibre, enhance WebSocket message processing, and optimize vehicle rendering" />
     <MESSAGE value="Refactor time scaling and broadcast frequency; increase time scale to 10x and send updates every 10 frames to improve vehicle movement during fast-forwarding" />
     <MESSAGE value="Refactor application structure; enhance documentation with detailed comments, improve code readability, and optimize vehicle movement logic" />
-    <option name="LAST_COMMIT_MESSAGE" value="Refactor application structure; enhance documentation with detailed comments, improve code readability, and optimize vehicle movement logic" />
+    <MESSAGE value="Refactor Docker setup; enhance docker-compose configuration with service definitions, add Nginx for frontend, and improve build process for backend services" />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactor Docker setup; enhance docker-compose configuration with service definitions, add Nginx for frontend, and improve build process for backend services" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
