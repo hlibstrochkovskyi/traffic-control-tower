@@ -15,8 +15,11 @@ pub fn broadcast_system(
     mut counter: ResMut<BroadcastCounter>,
 ) {
     counter.0 += 1;
-    // Send less frequently (once every 60 frames) to avoid network overload
-    if counter.0 < 60 {
+
+    // [ИЗМЕНЕНИЕ] Отправляем чаще (каждые 10 кадров вместо 60)
+    // Это ~6 раз в секунду при 60 FPS.
+    // Это нужно, чтобы при ускоренном времени машины не "телепортировались".
+    if counter.0 < 10 {
         return;
     }
     counter.0 = 0;

@@ -21,12 +21,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="fffbdec2-c3d2-4da0-845f-a3904c2203ae" name="Changes" comment="Refactor frontend map handling; switch to DeckGL and MapLibre, enhance WebSocket message processing, and optimize vehicle rendering">
-      <change afterPath="$PROJECT_DIR$/frontend/src/declarations.d.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-api/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crates/traffic-sim/src/systems/broadcast.rs" beforeDir="false" afterPath="$PROJECT_DIR$/crates/traffic-sim/src/systems/broadcast.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -235,7 +232,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763674977624</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="Refactor frontend map handling; switch to DeckGL and MapLibre, enhance WebSocket message processing, and optimize vehicle rendering">
+      <option name="closed" value="true" />
+      <created>1763677613267</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1763677613267</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

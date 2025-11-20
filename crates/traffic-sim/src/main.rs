@@ -59,7 +59,10 @@ async fn main() -> Result<()> {
         let delta = (now - last_tick).as_secs_f32();
         last_tick = now;
 
-        *world.resource_mut::<DeltaTime>() = DeltaTime(delta);
+        // [ИЗМЕНЕНИЕ] Ускоряем время в 10 раз
+        let time_scale = 10.0;
+        *world.resource_mut::<DeltaTime>() = DeltaTime(delta * time_scale);
+
         schedule.run(&mut world);
 
         let elapsed = Instant::now() - now;
