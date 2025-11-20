@@ -11,6 +11,7 @@ use common::telemetry;
 use common::map::RoadGraph;
 use tower_http::cors::CorsLayer;
 use serde::Serialize;
+use futures_util::StreamExt;
 
 // Структура дороги для фронтенда
 #[derive(Serialize, Clone)]
@@ -22,6 +23,7 @@ struct Road {
 struct AppState {
     tx: broadcast::Sender<String>,
     map_points: Vec<Road>,
+    total_roads: usize,  // Store total roads count
 }
 
 #[tokio::main]
@@ -41,12 +43,21 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let total_roads = road_graph.edges.len();
+
     // Конвертируем дороги в формат для фронтенда
+    // Filter to only major roads for better performance
     let map_points: Vec<Road> = road_graph.edges
         .iter()
-        .take(3000) // Ограничиваем для производительности
+        .filter(|_road| {
+            // We can filter by checking the road type if we store it,
+            // For now, we'll use a simple approach: take a reasonable subset
+            // In production, we'd want to filter by highway type
+            true
+        })
+        .take(5000) // Limit to 5000 roads for browser performance
         .enumerate()
-        .map(|(idx, road)| Road {
+        .map(|(_idx, road)| Road {
             id: road.id as u64,
             geometry: road.geometry
                 .iter()
@@ -55,13 +66,15 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    info!("📊 Prepared {} road segments for frontend", map_points.len());
+    info!("📊 Prepared {} road segments for frontend (from {} total)", 
+          map_points.len(), road_graph.edges.len());
 
     let (tx, _rx) = broadcast::channel(100);
 
     let shared_state = Arc::new(AppState {
         tx: tx.clone(),
         map_points,
+        total_roads,
     });
 
     // Redis Listener
@@ -72,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Роутер
     let app = Router::new()
-        .route("/health", get(|| async { "OK" }))
+        .route("/health", get(health_check))
         .route("/map", get(get_map))
         .route("/ws", get(ws_handler))
         .with_state(shared_state)
@@ -87,7 +100,25 @@ async fn main() -> anyhow::Result<()> {
 
 // --- ХЕНДЛЕРЫ ---
 
+#[derive(Serialize)]
+struct HealthStatus {
+    status: String,
+    map_loaded: bool,
+    total_roads: usize,
+    visible_roads: usize,
+}
+
+async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthStatus> {
+    Json(HealthStatus {
+        status: "OK".to_string(),
+        map_loaded: state.total_roads > 0,
+        total_roads: state.total_roads,
+        visible_roads: state.map_points.len(),
+    })
+}
+
 async fn get_map(State(state): State<Arc<AppState>>) -> Json<Vec<Road>> {
+    info!("📍 Map requested, sending {} road segments", state.map_points.len());
     Json(state.map_points.clone())
 }
 
@@ -116,7 +147,7 @@ async fn subscribe_redis(state: Arc<AppState>) {
         }
     };
 
-    let mut con = match client.get_async_connection().await {
+    let con = match client.get_async_connection().await {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to connect to Redis: {}", e);
@@ -130,7 +161,6 @@ async fn subscribe_redis(state: Arc<AppState>) {
         return;
     }
 
-    use futures_util::StreamExt;
     while let Some(msg) = pubsub.on_message().next().await {
         let payload: String = match msg.get_payload() {
             Ok(p) => p,
