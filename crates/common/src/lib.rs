@@ -1,21 +1,27 @@
-// crates/common/src/lib.rs
+//! Common library for traffic control tower system.
+//!
+//! This crate provides shared functionality across all traffic-control-tower services,
+//! including Protocol Buffers definitions, configuration management, error handling,
+//! telemetry utilities, and map-related operations.
 
-// 1. Подключаем модуль proto
+// Protocol Buffers module containing generated types from telemetry.proto
 pub mod proto;
 
-// 2. Экспортируем всё содержимое модуля proto наружу.
-// Так как сгенерированные структуры лежат сразу внутри,
-// мы используем * (wildcard).
+// Re-export all Protocol Buffers types for convenient access
 pub use proto::*;
 
-// Остальное без изменений
+// Configuration management
 pub mod config;
 pub use config::Config;
 
+// Error handling types
 pub mod error;
 pub use error::{Result, TrafficError};
 
+// Telemetry and observability
 pub mod telemetry;
+
+// Map and geographic data operations
 pub mod map;
 
 pub use telemetry::init_tracing;

@@ -19,7 +19,7 @@ redis = { workspace = true }
 osmpbfreader = "0.16"
 geo = "0.26"
 glam = { version = "0.25", features = ["serde"] }
-bevy_ecs = "0.12" # Чтобы работала derive(Resource)
+bevy_ecs = "0.12"
 
 [build-dependencies]
 prost-build = "0.12"

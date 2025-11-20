@@ -1,4 +1,12 @@
-mod batch; // Include the created file
+//! Traffic Ingest Service - Kafka consumer for vehicle telemetry.
+//!
+//! This service consumes vehicle position messages from Kafka and implements
+//! a dual-path architecture:
+//! - **Cold Path**: Batches data to TimescaleDB for historical analysis
+//! - **Hot Path**: Updates Redis with real-time vehicle locations and publishes
+//!   updates to connected clients via pub/sub
+
+mod batch;
 
 use traffic_common::{Config, VehiclePosition, init_tracing};
 use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
@@ -10,14 +18,32 @@ use prost::Message as ProstMessage;
 use tokio::signal;
 use sqlx::PgPool;
 use crate::batch::BatchWriter;
-use redis::AsyncCommands; // For working with Redis
+use redis::AsyncCommands;
 
+/// Main ingestion service handling both database writes and Redis updates.
 struct IngestService {
+    /// Batched writer for efficient TimescaleDB inserts
     batch_writer: BatchWriter,
+    /// Redis connection for real-time geospatial indexing and pub/sub
     redis: redis::aio::ConnectionManager,
 }
 
 impl IngestService {
+    /// Creates a new IngestService with database and Redis connections.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration with connection URLs
+    ///
+    /// # Returns
+    ///
+    /// An initialized `IngestService` ready to process vehicle positions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - PostgreSQL connection fails
+    /// - Redis connection cannot be established
     async fn new(config: &Config) -> Result<Self> {
         // Connect to Postgres
         let pool = PgPool::connect(&config.postgres_url).await
@@ -34,18 +60,35 @@ impl IngestService {
         Ok(Self { batch_writer, redis })
     }
 
+    /// Processes a single vehicle position through both cold and hot paths.
+    ///
+    /// # Cold Path (Historical Storage)
+    /// - Adds position to batch buffer for TimescaleDB
+    /// - Data is flushed periodically for efficient bulk inserts
+    ///
+    /// # Hot Path (Real-Time Updates)
+    /// - Updates Redis geospatial index for proximity queries
+    /// - Stores vehicle metadata (speed, timestamp) with TTL
+    /// - Publishes update to "vehicles:update" channel for WebSocket clients
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - Vehicle position telemetry data
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database or Redis operations fail.
     async fn process(&mut self, position: VehiclePosition) -> Result<()> {
-        // 1. Cold Path: Накапливаем батч для TimescaleDB
+        // 1. Cold Path: Accumulate batch for TimescaleDB
         self.batch_writer.add(position.clone()).await?;
 
-        // 2. Hot Path: Обновляем Redis Geo Index (для поиска "кто рядом")
+        // 2. Hot Path: Update Redis Geo Index for proximity searches
         let _: () = self.redis.geo_add(
             "vehicles:current",
             (position.longitude, position.latitude, &position.vehicle_id)
         ).await?;
 
-        // 3. Метаданные (скорость) с TTL 60 секунд
-        // Используем serde_json для создания JSON объекта
+        // 3. Store metadata (speed) with 60-second TTL
         let metadata = serde_json::json!({
             "speed": position.speed,
             "timestamp": position.timestamp
@@ -57,8 +100,7 @@ impl IngestService {
             60
         ).await?;
 
-        // 4. ПУБЛИКАЦИЯ (Этого не хватало!) [FIX]
-        // Мы отправляем JSON в канал "vehicles:update", который слушает API
+        // 4. Publish update to WebSocket clients via Redis pub/sub
         let payload = serde_json::json!({
             "id": position.vehicle_id,
             "lat": position.latitude,
@@ -79,9 +121,10 @@ async fn main() -> Result<()> {
 
     let mut service = IngestService::new(&config).await?;
 
+    // Configure Kafka consumer
     let consumer: StreamConsumer = ClientConfig::new()
         .set("bootstrap.servers", &config.kafka_brokers)
-        .set("group.id", "ingest-group-final") // New consumer group to read messages from the start again
+        .set("group.id", "ingest-group-final")
         .set("auto.offset.reset", "earliest")
         .set("enable.auto.commit", "false")
         .create()
@@ -93,17 +136,18 @@ async fn main() -> Result<()> {
     let mut stream = consumer.stream();
     let shutdown = signal::ctrl_c();
 
+    // Main processing loop with graceful shutdown
     tokio::select! {
         _ = async {
             while let Some(msg_result) = stream.next().await {
                 if let Ok(msg) = msg_result {
                     if let Some(payload) = msg.payload() {
                         if let Ok(pos) = VehiclePosition::decode(payload) {
-                            // Processing
+                            // Process vehicle position
                             if let Err(e) = service.process(pos).await {
                                 tracing::error!("Processing error: {}", e);
                             }
-                            // Acknowledge processing
+                            // Acknowledge message processing
                             let _ = consumer.commit_message(&msg, CommitMode::Async);
                         }
                     }
